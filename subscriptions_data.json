@@ -1,0 +1,94 @@
+{
+  "subscriptions": {
+    "-1003162149759_ChatGPT_1762161624.052552": {
+      "name": "ChatGPT",
+      "group_id": -1003162149759,
+      "total_cost": 600.0,
+      "members": [
+        "Ishtiak",
+        "Firoz",
+        "Ahmed",
+        "Ishtiak"
+      ],
+      "cost_per_person": 150.0,
+      "created_at": "2025-11-03T15:20:24.052567",
+      "next_payment": "2025-12-03T15:20:24.052571"
+    },
+    "-1003162149759_Cluade_1762162094.831952": {
+      "name": "Cluade",
+      "group_id": -1003162149759,
+      "total_cost": 500.0,
+      "members": [
+        "Ishtiak",
+        "Firoz",
+        "Ahmed",
+        "Ishtiak"
+      ],
+      "cost_per_person": 125.0,
+      "created_at": "2025-11-03T15:28:14.831985",
+      "next_payment": "2025-12-03T15:28:14.832466"
+    },
+    "-1003162149759_Netflix_1762162485.435119": {
+      "name": "Netflix",
+      "group_id": -1003162149759,
+      "total_cost": 15.99,
+      "members": [
+        "Okay",
+        ",I",
+        "am",
+        "updating",
+        "it"
+      ],
+      "cost_per_person": 3.2,
+      "created_at": "2025-11-03T15:34:45.435135",
+      "next_payment": "2025-12-03T15:34:45.435330"
+    }
+  },
+  "groups": {},
+  "payments": {
+    "-1003162149759_ChatGPT_1762161624.052552_Ishtiak": {
+      "paid": false,
+      "last_payment": null
+    },
+    "-1003162149759_ChatGPT_1762161624.052552_Firoz": {
+      "paid": false,
+      "last_payment": null
+    },
+    "-1003162149759_ChatGPT_1762161624.052552_Ahmed": {
+      "paid": false,
+      "last_payment": null
+    },
+    "-1003162149759_Cluade_1762162094.831952_Ishtiak": {
+      "paid": false,
+      "last_payment": null
+    },
+    "-1003162149759_Cluade_1762162094.831952_Firoz": {
+      "paid": false,
+      "last_payment": null
+    },
+    "-1003162149759_Cluade_1762162094.831952_Ahmed": {
+      "paid": false,
+      "last_payment": null
+    },
+    "-1003162149759_Netflix_1762162485.435119_Okay": {
+      "paid": false,
+      "last_payment": null
+    },
+    "-1003162149759_Netflix_1762162485.435119_,I": {
+      "paid": false,
+      "last_payment": null
+    },
+    "-1003162149759_Netflix_1762162485.435119_am": {
+      "paid": false,
+      "last_payment": null
+    },
+    "-1003162149759_Netflix_1762162485.435119_updating": {
+      "paid": false,
+      "last_payment": null
+    },
+    "-1003162149759_Netflix_1762162485.435119_it": {
+      "paid": false,
+      "last_payment": null
+    }
+  }
+}
