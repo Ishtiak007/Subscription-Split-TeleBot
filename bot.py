@@ -58,6 +58,8 @@ class SubscriptionManager:
     
     def add_subscription(self, group_id: str, name: str, total_cost: float, members: List[str]):
         """Add a new subscription"""
+        # Ensure group_id is string
+        group_id = str(group_id)
         sub_id = f"{group_id}_{name}_{datetime.now().timestamp()}"
         cost_per_person = total_cost / len(members)
         
@@ -143,81 +145,55 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome_text = f"""
 👋 Welcome {user.first_name}!
 
-I'm your **Subscription Split Manager** bot. I help you manage shared subscriptions with your group members.
+I help you manage shared subscriptions and split costs with your group.
 
-**What I can do:**
-• 📝 Track shared subscriptions (Netflix, Spotify, etc.)
-• 💰 Split costs automatically among members
-• ✅ Track who has paid and who hasn't
-• 🔔 Send payment reminders
-• 📊 Show detailed payment status
+COMMANDS:
+/add - Create a subscription
+/list - View all subscriptions
+/paid - Mark payment as done
+/delete - Remove a subscription
 
-**Quick Start:**
-1. Add me to your group
-2. Use /add to create a subscription
-3. Track payments with /status
+Add me to your group and use /add to get started! 🚀
 
-**Commands:**
-/help - Show all available commands
-/add - Create a new subscription
-/status - View detailed subscription status
-/list - Quick list of all subscriptions
-/paid - Mark your payment as completed
-/remind - Send payment reminders
-/delete - Delete a subscription
-
-Let's get started! 🚀
+💡 I work with usernames - just mention people with @username!
 """
     
-    await update.message.reply_text(welcome_text, parse_mode='Markdown')
+    await update.message.reply_text(welcome_text)
 
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /help command - Show all commands"""
-    help_text = """
-📚 **Subscription Split Bot - All Commands**
-
-**Basic Commands:**
-• `/start` - Welcome message and introduction
-• `/help` - Show this help message
-
-**Subscription Management:**
-• `/add <name> <cost>` - Create new subscription
-  Example: `/add Netflix 15.99`
-
-• `/status` - View detailed status of all subscriptions
-  Shows: costs, members, payment status
-
-• `/list` - Quick list of all subscriptions
-  Shows: subscription names and costs only
-
-• `/delete <subscription_name>` - Delete a subscription
-  Example: `/delete Netflix`
-
-**Payment Tracking:**
-• `/paid <subscription_name>` - Mark your payment as completed
-  Example: `/paid Netflix`
-
-• `/remind` - Send payment reminders to members
-  Notifies members who haven't paid yet
-
-**How It Works:**
-1️⃣ Create a subscription with /add
-2️⃣ Enter member IDs when prompted
-3️⃣ Members use /paid to confirm payment
-4️⃣ Use /status to track everything
-
-**Tips:**
-• Use this bot in group chats for best results
-• Make the bot an admin to access member list
-• Payments reset monthly automatically
-
-Need help? Just ask! 😊
-"""
-    await update.message.reply_text(help_text, parse_mode='Markdown')
+async def debug_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /debug command - Show debug info (admin only)"""
+    chat = update.effective_chat
+    user = update.effective_user
+    
+    # Check if user is admin
+    try:
+        member = await chat.get_member(user.id)
+        if member.status not in ['creator', 'administrator']:
+            return
+    except Exception:
+        return
+    
+    debug_text = f"DEBUG INFO:\n\n"
+    debug_text += f"Chat ID: {chat.id}\n"
+    debug_text += f"Chat Type: {chat.type}\n\n"
+    
+    # Show stored subscriptions
+    debug_text += f"STORED SUBSCRIPTIONS:\n"
+    all_subs = manager.data.get('subscriptions', {})
+    if all_subs:
+        for sub_id, sub in all_subs.items():
+            debug_text += f"• {sub['name']} (Group: {sub['group_id']})\n"
+    else:
+        debug_text += "None\n"
+    
+    debug_text += f"\nTotal subscriptions in DB: {len(all_subs)}"
+    
+    await update.message.reply_text(debug_text)
 
 async def add_subscription(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /add command - Create subscription"""
     chat = update.effective_chat
+    user = update.effective_user
     
     # Check if in group
     if chat.type not in ['group', 'supergroup']:
@@ -233,7 +209,7 @@ async def add_subscription(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "**Usage:** `/add <name> <total_cost>`\n\n"
             "**Example:** `/add Netflix 15.99`\n\n"
             "This will create a new subscription that will be split among members.",
-            parse_mode='Markdown'
+            
         )
         return
     
@@ -247,82 +223,23 @@ async def add_subscription(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         f"📝 **Creating subscription:** {name}\n"
         f"💰 **Total Cost:** ${total_cost}\n\n"
-        f"Now, please reply with member user IDs separated by spaces.\n\n"
-        f"**Example:** `123456789 987654321`\n"
-        f"Or mention members with their @username\n\n"
-        f"💡 **Tip:** Get user IDs by forwarding their messages to @userinfobot",
-        parse_mode='Markdown'
+        f"Now mention the members (including yourself if needed).\n\n"
+        f"**Example:** @john @alice @bob\n\n"
+        f"💡 You can also just type usernames: john alice bob",
+        
     )
     
     # Store context for next message
     context.user_data['pending_subscription'] = {
         'name': name,
         'cost': total_cost,
-        'group_id': chat.id
+        'group_id': chat.id,
+        'creator_id': user.id,
+        'creator_username': user.username or user.first_name
     }
 
-async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /status command - View all subscriptions with detailed info"""
-    chat = update.effective_chat
-    user = update.effective_user
-    
-    if chat.type == 'private':
-        await update.message.reply_text(
-            "ℹ️ Please use this command in your group to see payment status."
-        )
-        return
-    
-    # Get subscriptions for this group
-    subscriptions = manager.get_subscriptions(chat.id)
-    
-    if not subscriptions:
-        await update.message.reply_text(
-            "📭 No subscriptions found for this group.\n\n"
-            "Use `/add <name> <cost>` to create one!\n"
-            "Example: `/add Netflix 15.99`",
-            parse_mode='Markdown'
-        )
-        return
-    
-    # Build detailed status message
-    status_text = "📊 **Subscription Status - Detailed View**\n"
-    status_text += "=" * 40 + "\n\n"
-    
-    total_monthly = 0
-    
-    for sub in subscriptions:
-        total_monthly += sub['total_cost']
-        status_text += f"**🎬 {sub['name']}**\n"
-        status_text += f"💵 Total Cost: ${sub['total_cost']}\n"
-        status_text += f"👥 Members: {len(sub['members'])}\n"
-        status_text += f"💰 Per Person: ${sub['cost_per_person']}\n"
-        status_text += f"📅 Next Payment: {sub['next_payment'][:10]}\n\n"
-        
-        status_text += "**Payment Status:**\n"
-        # Show payment status for each member
-        for member_id in sub['members']:
-            payment_key = f"{sub['id']}_{member_id}"
-            payment = manager.data['payments'].get(payment_key, {})
-            
-            if payment.get('paid'):
-                status_icon = "✅"
-                last_payment = payment.get('last_payment', 'N/A')
-                if last_payment != 'N/A':
-                    last_payment = last_payment[:10]
-                status_text += f"{status_icon} User {member_id}: Paid (Last: {last_payment})\n"
-            else:
-                status_icon = "⏳"
-                status_text += f"{status_icon} User {member_id}: **Pending Payment**\n"
-        
-        status_text += "\n" + "-" * 40 + "\n\n"
-    
-    status_text += f"💳 **Total Monthly Cost:** ${total_monthly:.2f}\n"
-    status_text += f"📝 **Total Subscriptions:** {len(subscriptions)}"
-    
-    await update.message.reply_text(status_text, parse_mode='Markdown')
-
 async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /list command - Quick list of subscriptions"""
+    """Handle /list command - View all subscriptions with payment status"""
     chat = update.effective_chat
     
     if chat.type == 'private':
@@ -331,18 +248,18 @@ async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     
+    logger.info(f"List command called for group {chat.id}")
     subscriptions = manager.get_subscriptions(chat.id)
+    logger.info(f"Found {len(subscriptions)} subscriptions")
     
     if not subscriptions:
         await update.message.reply_text(
-            "📭 No subscriptions yet.\n\n"
-            "Create one with: `/add Netflix 15.99`",
-            parse_mode='Markdown'
+            "📭 No subscriptions yet.\n\nCreate one with: /add Netflix 15.99"
         )
         return
     
-    # Build quick list
-    list_text = "📋 **Quick Subscription List**\n\n"
+    # Build subscription list with details (plain text, no markdown)
+    list_text = "📋 SUBSCRIPTIONS\n\n"
     
     total_cost = 0
     for i, sub in enumerate(subscriptions, 1):
@@ -350,21 +267,37 @@ async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # Count paid members
         paid_count = 0
+        pending_members = []
         for member_id in sub['members']:
             payment_key = f"{sub['id']}_{member_id}"
             payment = manager.data['payments'].get(payment_key, {})
             if payment.get('paid'):
                 paid_count += 1
+            else:
+                pending_members.append(member_id)
         
-        payment_status = f"{paid_count}/{len(sub['members'])} paid"
+        list_text += f"{i}. {sub['name']}\n"
+        list_text += f"   💰 ${sub['cost_per_person']}/person (${sub['total_cost']} total)\n"
+        list_text += f"   👥 {len(sub['members'])} members | "
         
-        list_text += f"{i}. **{sub['name']}**\n"
-        list_text += f"   💰 ${sub['cost_per_person']}/person | {payment_status}\n\n"
+        if paid_count == len(sub['members']):
+            list_text += "✅ All paid\n"
+        else:
+            list_text += f"⏳ {paid_count}/{len(sub['members'])} paid\n"
+            if pending_members:
+                # Format usernames with @
+                pending_display = ', '.join(['@'+m for m in pending_members[:3]])
+                list_text += f"   Pending: {pending_display}"
+                if len(pending_members) > 3:
+                    list_text += f" +{len(pending_members)-3} more"
+                list_text += "\n"
+        
+        list_text += f"   📅 Next: {sub['next_payment'][:10]}\n\n"
     
-    list_text += f"**Total:** ${total_cost:.2f}/month\n\n"
-    list_text += "Use `/status` for detailed view"
+    list_text += f"💳 TOTAL: ${total_cost:.2f}/month"
     
-    await update.message.reply_text(list_text, parse_mode='Markdown')
+    # Use plain text (no parse_mode) to avoid markdown issues with underscores
+    await update.message.reply_text(list_text)
 
 async def paid_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /paid command - Mark as paid"""
@@ -383,7 +316,7 @@ async def paid_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "**Usage:** `/paid <subscription_name>`\n\n"
             "**Example:** `/paid Netflix`\n\n"
             "Use `/list` to see all subscriptions.",
-            parse_mode='Markdown'
+            
         )
         return
     
@@ -401,87 +334,50 @@ async def paid_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             f"❌ Subscription '{sub_name}' not found.\n\n"
             f"Use `/list` to see all subscriptions.",
-            parse_mode='Markdown'
+            
         )
         return
     
-    # Check if user is a member
-    if str(user.id) not in matching_sub['members']:
+    # Check if user is a member (check by username or user ID fallback)
+    user_identifier = user.username if user.username else f"{user.first_name}_{user.id}"
+    
+    # Check if username matches any member
+    is_member = False
+    member_key = None
+    
+    for member in matching_sub['members']:
+        # Direct match
+        if member.lower() == user_identifier.lower():
+            is_member = True
+            member_key = member
+            break
+        # Also check without @ symbol
+        if member.lower() == user.username.lower() if user.username else False:
+            is_member = True
+            member_key = member
+            break
+    
+    if not is_member:
         await update.message.reply_text(
-            f"⚠️ You're not a member of the {matching_sub['name']} subscription."
+            f"⚠️ You're not a member of the {matching_sub['name']} subscription.\n\n"
+            f"Your username: @{user_identifier}\n"
+            f"Members: {', '.join(['@'+m for m in matching_sub['members']])}"
         )
         return
     
-    # Mark as paid
-    success = manager.mark_payment(matching_sub['id'], str(user.id), True)
+    # Mark as paid using the member key
+    success = manager.mark_payment(matching_sub['id'], member_key, True)
     
     if success:
         await update.message.reply_text(
-            f"✅ **Payment Confirmed!**\n\n"
+            f"✅ PAYMENT CONFIRMED!\n\n"
             f"Thank you {user.first_name}!\n"
-            f"Your payment for **{matching_sub['name']}** (${matching_sub['cost_per_person']}) "
+            f"Your payment for {matching_sub['name']} (${matching_sub['cost_per_person']}) "
             f"has been marked as paid.\n\n"
-            f"Use `/status` to see updated status.",
-            parse_mode='Markdown'
+            f"Use /list to see updated status."
         )
     else:
         await update.message.reply_text("❌ Error marking payment. Please try again.")
-
-async def remind_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /remind command - Send payment reminders"""
-    chat = update.effective_chat
-    
-    if chat.type == 'private':
-        await update.message.reply_text(
-            "ℹ️ This command only works in groups."
-        )
-        return
-    
-    subscriptions = manager.get_subscriptions(chat.id)
-    
-    if not subscriptions:
-        await update.message.reply_text(
-            "📭 No subscriptions to remind about!\n\n"
-            "Create one with `/add <name> <cost>`",
-            parse_mode='Markdown'
-        )
-        return
-    
-    # Build reminder message
-    reminder_text = "🔔 **Payment Reminder**\n\n"
-    reminder_text += "Hey everyone! Here's a friendly reminder about pending payments:\n\n"
-    
-    has_pending = False
-    
-    for sub in subscriptions:
-        # Check who hasn't paid
-        pending_members = []
-        for member_id in sub['members']:
-            payment_key = f"{sub['id']}_{member_id}"
-            payment = manager.data['payments'].get(payment_key, {})
-            if not payment.get('paid'):
-                pending_members.append(member_id)
-        
-        if pending_members:
-            has_pending = True
-            reminder_text += f"**{sub['name']}**\n"
-            reminder_text += f"💰 Amount: ${sub['cost_per_person']} per person\n"
-            reminder_text += f"📅 Due: {sub['next_payment'][:10]}\n"
-            reminder_text += f"⏳ Pending from:\n"
-            for member_id in pending_members:
-                reminder_text += f"  • User {member_id}\n"
-            reminder_text += "\n"
-    
-    if not has_pending:
-        reminder_text = "🎉 **Great news!**\n\n"
-        reminder_text += "All payments are up to date! ✅\n\n"
-        reminder_text += "Thank you everyone for being on time!"
-    else:
-        reminder_text += "\n💡 **To mark as paid, use:**\n"
-        reminder_text += "`/paid <subscription_name>`\n\n"
-        reminder_text += "Thank you! 🙏"
-    
-    await update.message.reply_text(reminder_text, parse_mode='Markdown')
 
 async def delete_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /delete command - Delete a subscription"""
@@ -511,7 +407,7 @@ async def delete_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "**Usage:** `/delete <subscription_name>`\n\n"
             "**Example:** `/delete Netflix`\n\n"
             "Use `/list` to see all subscriptions.",
-            parse_mode='Markdown'
+            
         )
         return
     
@@ -528,8 +424,7 @@ async def delete_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not matching_sub:
         await update.message.reply_text(
             f"❌ Subscription '{sub_name}' not found.\n\n"
-            f"Use `/list` to see all subscriptions.",
-            parse_mode='Markdown'
+            f"Use /list to see all subscriptions."
         )
         return
     
@@ -538,11 +433,10 @@ async def delete_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if success:
         await update.message.reply_text(
-            f"🗑️ **Subscription Deleted**\n\n"
-            f"The **{matching_sub['name']}** subscription has been removed.\n"
-            f"All associated payment records have been cleared.\n\n"
-            f"Use `/list` to see remaining subscriptions.",
-            parse_mode='Markdown'
+            f"🗑️ SUBSCRIPTION DELETED\n\n"
+            f"The {matching_sub['name']} subscription has been removed.\n"
+            f"All payment records have been cleared.\n\n"
+            f"Use /list to see remaining subscriptions."
         )
     else:
         await update.message.reply_text("❌ Error deleting subscription. Please try again.")
@@ -552,42 +446,78 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if 'pending_subscription' in context.user_data:
         pending = context.user_data['pending_subscription']
         
-        # Parse member IDs from message
         text = update.message.text
-        member_ids = text.split()
+        message = update.message
         
-        if member_ids:
-            # Create subscription
-            sub_id = manager.add_subscription(
-                group_id=pending['group_id'],
-                name=pending['name'],
-                total_cost=pending['cost'],
-                members=member_ids
-            )
-            
-            cost_per_person = pending['cost'] / len(member_ids)
-            
+        # Extract usernames from mentions (entities)
+        member_usernames = []
+        
+        # Check if message has entities (mentions)
+        if message.entities:
+            for entity in message.entities:
+                if entity.type == "mention":
+                    # Extract username from @username
+                    username = text[entity.offset:entity.offset + entity.length]
+                    username = username.replace('@', '')  # Remove @
+                    member_usernames.append(username)
+                elif entity.type == "text_mention":
+                    # User mentioned but doesn't have username, use their name
+                    if entity.user.username:
+                        member_usernames.append(entity.user.username)
+                    else:
+                        # Store user ID as fallback for users without username
+                        member_usernames.append(f"{entity.user.first_name}_{entity.user.id}")
+        
+        # Also parse text for usernames (without @)
+        words = text.split()
+        for word in words:
+            clean_word = word.replace('@', '').strip()
+            # If it looks like a username (alphanumeric with underscores)
+            if clean_word and not clean_word.isdigit() and clean_word not in member_usernames:
+                # Simple validation: contains letters
+                if any(c.isalpha() for c in clean_word):
+                    member_usernames.append(clean_word)
+        
+        if not member_usernames:
             await update.message.reply_text(
-                f"✅ **Subscription Created Successfully!**\n\n"
-                f"**{pending['name']}**\n"
-                f"💰 Total Cost: ${pending['cost']}\n"
-                f"👥 Members: {len(member_ids)}\n"
-                f"💵 Cost per person: ${cost_per_person:.2f}\n"
-                f"📅 Next payment: 30 days from now\n\n"
-                f"**Next Steps:**\n"
-                f"• Members can mark payments: `/paid {pending['name']}`\n"
-                f"• Check status: `/status`\n"
-                f"• Send reminders: `/remind`",
-                parse_mode='Markdown'
+                "❌ No valid members found!\n\n"
+                "Please mention members or type their usernames:\n"
+                "• With @: `@john @alice @bob`\n"
+                "• Without @: `john alice bob`\n\n"
+                "You can also directly mention them."
             )
-            
-            # Clear pending data
-            del context.user_data['pending_subscription']
-        else:
-            await update.message.reply_text(
-                "❌ No valid member IDs found. Please try again.\n\n"
-                "Send member IDs separated by spaces."
-            )
+            return
+        
+        # Remove duplicates while preserving order
+        member_usernames = list(dict.fromkeys(member_usernames))
+        
+        # Create subscription
+        sub_id = manager.add_subscription(
+            group_id=pending['group_id'],
+            name=pending['name'],
+            total_cost=pending['cost'],
+            members=member_usernames
+        )
+        
+        logger.info(f"Created subscription {sub_id} for group {pending['group_id']} with members: {member_usernames}")
+        
+        cost_per_person = pending['cost'] / len(member_usernames)
+        
+        # Build member list for display
+        member_display = ', '.join([f"@{m}" for m in member_usernames])
+        
+        await update.message.reply_text(
+            f"✅ SUBSCRIPTION CREATED!\n\n"
+            f"{pending['name']}\n"
+            f"💰 Total: ${pending['cost']}\n"
+            f"👥 Members ({len(member_usernames)}): {member_display}\n"
+            f"💵 Per person: ${cost_per_person:.2f}\n"
+            f"📅 Next payment: 30 days\n\n"
+            f"Members can mark payments: /paid {pending['name']}"
+        )
+        
+        # Clear pending data
+        del context.user_data['pending_subscription']
 
 def main():
     """Start the bot"""
@@ -608,12 +538,10 @@ def main():
     
     # Add command handlers
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("debug", debug_command))
     application.add_handler(CommandHandler("add", add_subscription))
-    application.add_handler(CommandHandler("status", status_command))
     application.add_handler(CommandHandler("list", list_command))
     application.add_handler(CommandHandler("paid", paid_command))
-    application.add_handler(CommandHandler("remind", remind_command))
     application.add_handler(CommandHandler("delete", delete_command))
     
     # Add message handler for regular messages
@@ -621,15 +549,14 @@ def main():
     
     # Start bot
     print("🤖 Bot is starting...")
-    print("✅ All commands loaded:")
+    print("✅ Commands loaded:")
     print("   /start - Welcome message")
-    print("   /help - Show all commands")
     print("   /add - Create subscription")
-    print("   /status - View all subscriptions")
-    print("   /list - Quick list of subscriptions")
+    print("   /list - View all subscriptions")
     print("   /paid - Mark as paid")
-    print("   /remind - Send payment reminders")
-    print("   /delete - Delete a subscription")
+    print("   /delete - Delete subscription")
+    print("   /debug - Debug info (admin only)")
+    print("\n💡 Now using usernames instead of IDs!")
     print("\nPress Ctrl+C to stop")
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
